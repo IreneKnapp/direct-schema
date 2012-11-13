@@ -1,0 +1,21 @@
+{
+  "name": "direct-schema",
+  "version": "1.0.0",
+  "description": "A validator for json-schema, designed as a testbed for experimental extensions to it",
+  "licenses": [{"type": "BSD"}],
+  "homepage": "http://ireneknapp.com/software/",
+  "author": {
+    "name": "Irene Knapp",
+    "url": "http://ireneknapp.com/",
+    "email": "irene.knapp@icloud.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/IreneKnapp/direct-schema.git"
+  },
+  "main": "./src/directSchema.js",
+  "dependencies": {
+    "underscore": ">= 1.4"
+  },
+  "engine": "node >= 0.8"
+}

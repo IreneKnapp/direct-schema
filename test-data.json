@@ -1,0 +1,193 @@
+{
+  "id": "b1a8f23b-2c5d-4c46-8a06-3ee8c095d203",
+  
+  "tables": {
+    "schema": {
+      "columns": {
+        "schema_id": { "type": "uuid" }
+      },
+      "constraints": []
+    },
+    
+    "category": {
+      "columns": {
+        "category_id": { "type": "uuid", "constraints": [
+          { "type": "primary_key" }
+        ]},
+        "parent_ids": { "type": ["array", "uuid"] },
+        "parent_names": { "type": ["array", "text"] },
+        "name": { "type": "text" },
+        "memo": { "type": ["maybe", "text"] }
+      },
+      "constraints": []
+    },
+    
+    "category_hierarchy": {
+      "columns": {
+        "parent_id": { "type": "uuid", "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "category",
+            "foreign_columns": ["category_id"] }
+        ]},
+        "child_id": { "type": "uuid", "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "category",
+            "foreign_columns": ["category_id"] }
+        ]}
+      },
+      "constraints": [
+        { "type": "primary_key",
+          "columns": ["parent_id", "child_id"] }
+      ]
+    },
+    
+    "content_type": {
+      "columns": {
+        "content_type_id": { "type": "uuid", "constraints": [
+          { "type": "primary_key" }
+        ]},
+        "parent_ids": { "type": ["array", "uuid"] },
+        "parent_names": { "type": ["array", "text"] },
+        "name": { "type": "text" },
+        "memo": { "type": ["maybe", "text"] }
+      },
+      "constraints": []
+    },
+    
+    "content_type_hierarchy": {
+      "columns": {
+        "parent_id": { "type": "uuid", "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "content_type",
+            "foreign_columns": ["content_type_id"] }
+        ]},
+        "child_id": { "type": "uuid", "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "content_type",
+            "foreign_columns": ["content_type_id"] }
+        ]}
+      },
+      "constraints": [
+        { "type": "primary_key",
+          "columns": ["parent_id", "child_id"] }
+      ]
+    },
+    
+    "content": {
+      "columns": {
+        "content_id": { "type": "uuid", "read_only": true, "constraints": [
+          { "type": "primary_key" }
+        ]},
+        "content_type_id": { "type": "uuid", "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "content_type",
+            "foreign_columns": ["content_type_id"] }
+        ]},
+        "created_at": { "type": "timestamp", "read_only": true }
+      },
+      "constraints": []
+    },
+    
+    "categorization": {
+      "columns": {
+        "content_id": { "type": "uuid", "read_only": true, "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "content",
+            "foreign_columns": ["content_id"] }
+        ]},
+        "category_id": { "type": "uuid", "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "category",
+            "foreign_columns": ["category_id"] }
+        ]}
+      },
+      "constraints": [
+        { "type": "primary_key",
+          "columns": ["content_id", "category_id"] }
+      ]
+    },
+    
+    "content_version": {
+      "columns": {
+        "content_id": { "type": "uuid", "read_only": true },
+        "created_at": { "type": "timestamp", "read_only": true },
+        "is_latest": { "type": "boolean" },
+        "creator_id": { "type": "uuid", "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "person",
+            "foreign_columns": ["person_id"] }
+        ]}
+      },
+      "constraints": [
+        { "type": "primary_key",
+          "columns": ["content_id", "created_at"] }
+      ]
+    },
+    
+    "person": {
+      "columns": {
+        "person_id": { "type": "uuid", "read_only": true, "constraints": [
+          { "type": "primary_key" }
+        ]},
+        "created_at": { "type": "timestamp", "read_only": true },
+        "modified_at": { "type": "timestamp", "read_only": true },
+        "password": { "type": "password" },
+        "primary_email": { "type": ["maybe", "email"] }
+      },
+      "constraints": [
+        { "type": "foreign_key",
+          "columns": ["person_id", "primary_email"],
+          "foreign_table": "email",
+          "foreign_columns": ["person_id", "email"] }
+      ]
+    },
+    
+    "email": {
+      "columns": {
+        "person_id": { "type": "uuid", "read_only": true, "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "person",
+            "foreign_columns": ["person_id"] }
+        ]},
+        "email": { "type": "email", "constraints": [
+          { "type": "primary_key" }
+        ]}
+      },
+      "constraints": []
+    },
+    
+    "image_format": {
+      "columns": {
+        "image_format_id": { "type": "uuid", "constraints": [
+          { "type": "primary_key" }
+        ]},
+        "name": { "type": "text" },
+        "memo": { "type": ["maybe", "text"] }
+      },
+      "constraints": []
+    },
+    
+    "image": {
+      "columns": {
+        "content_id": { "type": "uuid", "read_only": true },
+        "created_at": { "type": "timestamp", "read_only": true },
+        "width": { "type": "integer" },
+        "height": { "type": "integer" },
+        "format": { "type": "uuid", "constraints": [
+          { "type": "foreign_key",
+            "foreign_table": "image_format",
+            "foreign_columns": ["image_format_id"] }
+        ]},
+        "data": { "type": "blob" }
+      },
+      "constraints": [
+        { "type": "primary_key",
+          "columns": ["content_id", "created_at"] },
+        { "type": "foreign_key",
+          "columns": ["content_id", "created_at"],
+          "foreign_table": "content_version",
+          "foreign_columns": ["content_id", "created_at"] }
+      ]
+    }
+  }
+}

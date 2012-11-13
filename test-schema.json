@@ -1,0 +1,68 @@
+{
+  "title": "database schema",
+  "type": "object",
+  "properties": {
+    "id": {
+      "title": "schema id",
+      "required": true,
+      "extends": { "$ref": "#definitions/uuid" }
+    },
+    "tables": {
+      "title": "table specification list",
+      "required": true,
+      "type": "object",
+      "patternProperties": {
+        "^[a-z_]+$": {
+          "title": "table specification",
+          "type": "object",
+          "properties": {
+            "columns": {
+              "title": "column specification list",
+              "type": "object",
+              "patternProperties": {
+                "^[a-z_]+$": {
+                  "title": "column specification",
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "title": "type specification",
+                      "enum": ["integer", ["integer"], ["maybe", "integer"],
+                               "text", ["text"], ["maybe", "text"], ["array", "text"],
+                               "blob", ["blob"], ["maybe", "blob"],
+                               "uuid", ["uuid"], ["maybe", "uuid"], ["array", "uuid"],
+                               "timestamp", ["timestamp"], ["maybe", "timestamp"],
+                               "email", ["email"], ["maybe", "email"],
+                               "password", ["password"], ["maybe", "password"]]
+                    },
+                    "constraints": {
+                      "title": "column constraint specification list"
+                    },
+                    "read_only": {
+                      "title": "column read-only field",
+                      "type": "boolean",
+                      "default": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            },
+            "constraints": {
+              "title": "table constraint specification list",
+              "type": "array"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "definitions": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}Z$"
+    }
+  }
+}
