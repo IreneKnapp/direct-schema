@@ -45,18 +45,7 @@ var directSchema = function(schema) {
             }
         });
         
-        _.each(["definitions"], function(superkey) {
-            if(_.isArray(localSchema[superkey])) {
-                visitQueue = _.flatten([visitQueue,
-                _.map(_.range(localSchema[superkey]), function(index) {
-                    var subpath = superkey + "/" + index;
-                    if(schemaPath != "") subpath = schemaPath + "/" + subpath;
-                    return subpath;
-                })], true);
-            }
-        });
-        
-        _.each(["properties", "patternProperties"], function(superkey) {
+        _.each(["properties", "patternProperties", "definitions"], function(superkey) {
             if(_.isObject(localSchema[superkey])) {
                 visitQueue = _.flatten([visitQueue,
                 _.map(_.keys(localSchema[superkey]), function(key) {
