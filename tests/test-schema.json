@@ -5,7 +5,7 @@
     "id": {
       "title": "schema id",
       "required": true,
-      "extends": { "$ref": "#definitions/uuid" }
+      "extends": { "$ref": "#/definitions/uuid" }
     },
     "tables": {
       "title": "table specification list",
@@ -26,7 +26,8 @@
                   "properties": {
                     "type": {
                       "title": "type specification",
-                      "enum": ["integer", ["integer"], ["maybe", "integer"],
+                      "enum": ["boolean", ["boolean"], ["maybe", "boolean"],
+                               "integer", ["integer"], ["maybe", "integer"],
                                "text", ["text"], ["maybe", "text"], ["array", "text"],
                                "blob", ["blob"], ["maybe", "blob"],
                                "uuid", ["uuid"], ["maybe", "uuid"], ["array", "uuid"],
@@ -35,7 +36,8 @@
                                "password", ["password"], ["maybe", "password"]]
                     },
                     "constraints": {
-                      "title": "column constraint specification list"
+                      "title": "column constraint specification list",
+                      "additionalProperties": false
                     },
                     "read_only": {
                       "title": "column read-only field",
@@ -61,8 +63,10 @@
   },
   "definitions": {
     "uuid": {
+      "title": "uuid",
+      "description": "A universally-unique identifier, expressed in its textual syntax.",
       "type": "string",
-      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}Z$"
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
     }
   }
 }
