@@ -12,15 +12,6 @@ applyPath = function(data, path) {
     return applyPath(data[path[0]], path.slice(1));
 }
 
-var isLink;
-isLink = function(string) {
-    if(/^#/.test(link)) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
 var resolveLink;
 resolveLink = function(link, base) {
     if(link == "#") {
@@ -65,290 +56,281 @@ equal = function(a, b) {
     }
 }
 
-var directSchema = function(schema) {
-    var validators = {};
+var validate;
+validate = function(options) {
+    var data = options.data;
+    var schema = options.schema;
+    var topSchema = options.topSchema;
+    var schemaPath = options.schemaPath;
+    var dataPath = options.dataPath;
+    var errorHandler = options.errorHandler;
     
-    var visitQueue = ["/"];
-    while(visitQueue.length > 0) {
-        var schemaPath = visitQueue.shift();
-        if(!_.isUndefined(validators[schemaPath])) continue;
+    var valid = true;
+    var errors = [];
+    var inPart = _.isString(schema.title) ? " in " + schema.title : "";
+    var errorTemplate = {
+        dataPath: dataPath,
+        schemaPath: schemaPath,
+        schemaTitle: schema.title,
+        schemaDescription: schema.description,
+        data: data,
+        schema: schema,
+    };
+    
+    var emitError = function(options) {
+        var error = _.extend(options, errorTemplate);
+        valid = false;
+        errors.push(error);
+        if(!_.isNull(errorHandler)) errorHandler(error);
+    };
+    
+    if(!_.isUndefined(schema.$ref)) {
+        var subpath = resolveLink(schema.$ref, schemaPath);
         
-        var localSchema = applyPath(schema, pathParts(schemaPath));
-        
-        _.each(["additionalProperties"], function(superkey) {
-            if(_.isObject(localSchema[superkey])) {
-                var subpath = "/" + superkey;
-                if(schemaPath != "/") subpath = schemaPath + subpath;
-                visitQueue = _.flatten([visitQueue, [subpath]], true);
-            }
-        });
-        
-        _.each(["extends"], function(superkey) {
-            if(_.isArray(localSchema[superkey])) {
-                visitQueue = _.flatten([visitQueue,
-                _.map(_.range(localSchema[superkey]), function(index) {
-                    var subpath = "/" + superkey + "/" + index;
-                    if(schemaPath != "/") subpath = schemaPath + subpath;
-                    return subpath;
-                })], true);
-            } else if(_.isObject(localSchema[superkey])) {
-                var subpath = "/" + superkey;
-                if(schemaPath != "/") subpath = schemaPath + subpath;
-                visitQueue = _.flatten([visitQueue, [subpath]], true);
-            }
-        });
-        
-        _.each(["properties", "patternProperties", "definitions"], function(superkey) {
-            if(_.isObject(localSchema[superkey])) {
-                visitQueue = _.flatten([visitQueue,
-                _.map(_.keys(localSchema[superkey]), function(key) {
-                    var subpath = "/" + superkey + "/" + key;
-                    if(schemaPath != "/") subpath = schemaPath + subpath;
-                    return subpath;
-                })], true);
-            }
-        });
-        
-        validators[schemaPath] = (function(schemaPath, localSchema) {
-        return function(data, errorHandler, dataPath) {
-            if(_.isUndefined(dataPath)) dataPath = "/";
+        if(!_.isNull(subpath)) {
+            var subschema = applyPath(topSchema, pathParts(subpath));
             
-            var valid = true;
-            var errors = [];
-            var inPart = _.isString(localSchema.title) ? " in " + localSchema.title : "";
-            var errorTemplate = {
-                dataPath: dataPath,
-                schemaPath: schemaPath,
-                schemaTitle: localSchema.title,
-                schemaDescription: localSchema.description,
+            var subresult = validate({
                 data: data,
-                schema: localSchema,
-            };
+                schema: subschema,
+                topSchema: topSchema,
+                schemaPath: subpath,
+                dataPath: dataPath,
+                errorHandler: errorHandler,
+            });
             
-            var emitError = function(options) {
-                var error = _.extend(options, errorTemplate);
-                valid = false;
-                errors.push(error);
-                if(!_.isNull(errorHandler)) errorHandler(error);
-            };
-            
-            if(!_.isUndefined(localSchema.$ref)) {
-                var subpath = resolveLink(localSchema.$ref, schemaPath);
-                
-                if(!_.isNull(subpath)) {
-                    var subschema = applyPath(schema, pathParts(subpath));
-                    if(_.isString(subschema))
-                        subpath = resolveLink(subschema, schemaPath);
-                }
-                
-                if(!_.isNull(subpath) && !_.isUndefined(validators[subpath])) {
-                    var subresult = validators[subpath](data, errorHandler, dataPath);
-                    
-                    if(!subresult.valid) valid = false;
-                    errors = _.flatten([errors, subresult.errors], true);
-                } else {
+            if(!subresult.valid) valid = false;
+            errors = _.flatten([errors, subresult.errors], true);
+        } else {
+            emitError({
+                message: "Referenced schema with URL " + schema.$ref + " not found.",
+                reference: schema.$ref,
+            });
+        }
+    } else {
+        var allowedTypes = schema.type || "any";
+        if(_.isString(allowedTypes)) allowedTypes = [allowedTypes];
+        var allowedSchemas = _.reject(allowedTypes, _.isString);
+        allowedTypes = _.filter(allowedTypes, _.isString);
+        if(_.contains(allowedTypes, "any"))
+            allowedTypes = ["string", "number", "integer", "boolean",
+                            "object", "array", "null"];
+        
+        var errorGroups = [];
+        
+        _.each(allowedSchemas, function(allowedSchema) {
+            // ... IAK
+        });
+        
+        var errorGroup = [];
+        var savedEmitError = emitError;
+        emitError = function(options) {
+            var error = _.extend(options, errorTemplate);
+            errorGroup.push(error);
+        }
+        
+        if(_.isNull(data)) {
+            if(!_.contains(allowedTypes, "null")) {
+                emitError({
+                    message: "Null not allowed" + inPart + ".",
+                });
+            }
+        } else if(_.isBoolean(data)) {
+            if(!_.contains(allowedTypes, "boolean")) {
+                emitError({
+                    message: "Boolean not allowed" + inPart + ".",
+                });
+            }
+        } else if(_.isNumber(data)) {
+            if(_.isNaN(data) || !_.isFinite(data) || (data % 1 != 0)) {
+                if(!_.contains(allowedTypes, "number")) {
                     emitError({
-                        message: "Referenced schema with URL " + localSchema.$ref + " not found.",
-                        reference: localSchema.$ref,
+                        message: "Float not allowed" + inPart + ".",
                     });
                 }
             } else {
-                var allowedTypes = localSchema.type || "any";
-                if(_.isString(allowedTypes)) allowedTypes = [allowedTypes];
-                var allowedSchemas = _.filter(allowedTypes, isLink);
-                allowedTypes = _.reject(allowedTypes, isLink);
-                if(_.contains(allowedTypes, "any"))
-                    allowedTypes = ["string", "number", "integer", "boolean",
-                                    "object", "array", "null"];
-                
-                /*
-                var errorGroups = [];
-                
-                _.each(allowedSchemas, function(allowedSchema) {
-                    // ... IAK
-                });
-                */
-                
-                if(_.isNull(data)) {
-                    if(!_.contains(allowedTypes, "null")) {
-                        emitError({
-                            message: "Null not allowed" + inPart + ".",
-                        });
-                    }
-                } else if(_.isBoolean(data)) {
-                    if(!_.contains(allowedTypes, "boolean")) {
-                        emitError({
-                            message: "Boolean not allowed" + inPart + ".",
-                        });
-                    }
-                } else if(_.isNumber(data)) {
-                    if(_.isNaN(data) || !_.isFinite(data) || (data % 1 != 0)) {
-                        if(!_.contains(allowedTypes, "number")) {
-                            emitError({
-                                message: "Float not allowed" + inPart + ".",
-                            });
-                        }
-                    } else {
-                        if(!_.contains(allowedTypes, "number")
-                           && !_.contains(allowedTypes, "integer"))
-                        {
-                            emitError({
-                                message: "Integer not allowed" + inPart + ".",
-                            });
-                        }
-                    }
-                } else if(_.isString(data)) {
-                    if(!_.contains(allowedTypes, "string")) {
-                        emitError({
-                            message: "String not allowed" + inPart + ".",
-                        });
-                    } else {
-                        if(!_.isUndefined(localSchema.pattern)) {
-                            var regexp = new RegExp(localSchema.pattern);
-                            if(!regexp.test(data)) {
-                                emitError({
-                                    message: "String doesn't match pattern" + inPart + ".",
-                                    pattern: localSchema.pattern,
-                                });
-                            }
-                        }
-                        
-                        if(!_.isUndefined(localSchema.minLength)) {
-                            if(data.length < localSchema.minLength) {
-                                emitError({
-                                    message: "String doesn't meet minimum length" + inPart + ".",
-                                    actualLength: data.length,
-                                    minimumLength: localSchema.minLength,
-                                });
-                            }
-                        }
-                        
-                        if(!_.isUndefined(localSchema.maxLength)) {
-                            if(data.length > localSchema.maxLength) {
-                                emitError({
-                                    message: "String exceeds maximum length" + inPart + ".",
-                                    actualLength: data.length,
-                                    maximumLength: localSchema.maxLength,
-                                });
-                            }
-                        }
-                    }
-                } else if(_.isArray(data)) {
-                    if(!_.contains(allowedTypes, "array")) {
-                        emitError({
-                            message: "Array not allowed" + inPart + ".",
-                        });
-                    }
-                } else if(_.isObject(data)) {
-                    if(!_.contains(allowedTypes, "object")) {
-                        emitError({
-                            message: "Object not allowed" + inPart + ".",
-                        });
-                    }
-                    
-                    _.each(data, function(subdata, key) {
-                        var subpath = null;
-                        var additionalProperties = true;
-                        
-                        if(!_.isUndefined(localSchema.properties)
-                           && !_.isUndefined(localSchema.properties[key]))
-                        {
-                            subpath = "/properties/" + key;
-                        }
-                        
-                        if(_.isNull(subpath) && !_.isUndefined(localSchema.patternProperties)) {
-                            _.each(_.keys(localSchema.patternProperties), function(pattern) {
-                                if(!_.isNull(subpath)) return;
-                                
-                                if(key.match(pattern)) {
-                                    subpath = "/patternProperties/" + pattern;
-                                }
-                            });
-                        }
-                        
-                        if(_.isNull(subpath) && !_.isUndefined(localSchema.additionalProperties)) {
-                            if(_.isBoolean(localSchema.additionalProperties)) {
-                                additionalProperties = localSchema.additionalProperties;
-                            } else {
-                                subpath = "/additionalProperties";
-                            }
-                        }
-                        
-                        if(!_.isNull(subpath)) {
-                            if(schemaPath != "/") subpath = schemaPath + subpath;
-                            
-                            var subschema = applyPath(schema, pathParts(subpath));
-                            if(_.isString(subschema))
-                                subpath = resolveLink(subschema, schemaPath);
-                            
-                            dataSubpath = "/" + key;
-                            if(dataPath != "/") dataSubpath = dataPath + dataSubpath;
-                            
-                            var subresult = validators[subpath](subdata, errorHandler, dataSubpath);
-                            
-                            if(!subresult.valid) valid = false;
-                            errors = _.flatten([errors, subresult.errors], true);
-                        } else if(!additionalProperties) {
-                            emitError({
-                                message: "Property " + key + " not allowed" + inPart + ".",
-                                property: key,
-                            });
-                        }
-                    });
-                } else {
+                if(!_.contains(allowedTypes, "number")
+                   && !_.contains(allowedTypes, "integer"))
+                {
                     emitError({
-                        message: "Non-JSON value not allowed" + inPart + ".",
-                    });
-                }
-                
-                if(!_.isUndefined(localSchema.enum)) {
-                    var found = _.any(localSchema.enum, function(expectedData) {
-                        return equal(data, expectedData);
-                    });
-                    
-                    if(!found) {
-                        emitError({
-                            message: "Value not allowed" + inPart + ".",
-                            allowedValues: localSchema.enum,
-                        });
-                    }
-                }
-                
-                if(!_.isUndefined(localSchema.extends)) {
-                    var subpaths;
-                    if(_.isArray(localSchema.extends)) {
-                        subpaths = _.map(_.range(localSchema.extends.length), function(index) {
-                            return "/extends/" + index;
-                        });
-                    } else {
-                        subpaths = ["/extends"];
-                    }
-                    
-                    _.each(subpaths, function(subpath) {
-                        if(schemaPath != "/") subpath = schemaPath + subpath;
-                        
-                        var subschema = applyPath(schema, pathParts(subpath));
-                        if(_.isString(subschema))
-                            subpath = resolveLink(subschema, schemaPath);
-                        
-                        var subresult = validators[subpath](data, errorHandler, dataPath);
-                        
-                        if(!subresult.valid) valid = false;
-                        errors = _.flatten([errors, subresult.errors], true);
+                        message: "Integer not allowed" + inPart + ".",
                     });
                 }
             }
+        } else if(_.isString(data)) {
+            if(!_.contains(allowedTypes, "string")) {
+                emitError({
+                    message: "String not allowed" + inPart + ".",
+                });
+            } else {
+                if(!_.isUndefined(schema.pattern)) {
+                    var regexp = new RegExp(schema.pattern);
+                    if(!regexp.test(data)) {
+                        emitError({
+                            message: "String doesn't match pattern" + inPart + ".",
+                            pattern: schema.pattern,
+                        });
+                    }
+                }
+                
+                if(!_.isUndefined(schema.minLength)) {
+                    if(data.length < schema.minLength) {
+                        emitError({
+                            message: "String doesn't meet minimum length" + inPart + ".",
+                            actualLength: data.length,
+                            minimumLength: schema.minLength,
+                        });
+                    }
+                }
+                
+                if(!_.isUndefined(schema.maxLength)) {
+                    if(data.length > schema.maxLength) {
+                        emitError({
+                            message: "String exceeds maximum length" + inPart + ".",
+                            actualLength: data.length,
+                            maximumLength: schema.maxLength,
+                        });
+                    }
+                }
+            }
+        } else if(_.isArray(data)) {
+            if(!_.contains(allowedTypes, "array")) {
+                emitError({
+                    message: "Array not allowed" + inPart + ".",
+                });
+            }
+        } else if(_.isObject(data)) {
+            if(!_.contains(allowedTypes, "object")) {
+                emitError({
+                    message: "Object not allowed" + inPart + ".",
+                });
+            }
             
-            return {
-                data: data,
-                valid: valid,
-                errors: errors,
-            };
-        };})(schemaPath, localSchema);
+            _.each(data, function(subdata, key) {
+                var subpath = null;
+                var additionalProperties = true;
+                
+                if(!_.isUndefined(schema.properties)
+                   && !_.isUndefined(schema.properties[key]))
+                {
+                    subpath = "/properties/" + key;
+                }
+                
+                if(_.isNull(subpath) && !_.isUndefined(schema.patternProperties)) {
+                    _.each(_.keys(schema.patternProperties), function(pattern) {
+                        if(!_.isNull(subpath)) return;
+                        
+                        if(key.match(pattern)) {
+                            subpath = "/patternProperties/" + pattern;
+                        }
+                    });
+                }
+                
+                if(_.isNull(subpath) && !_.isUndefined(schema.additionalProperties)) {
+                    if(_.isBoolean(schema.additionalProperties)) {
+                        additionalProperties = schema.additionalProperties;
+                    } else {
+                        subpath = "/additionalProperties";
+                    }
+                }
+                
+                if(!_.isNull(subpath)) {
+                    if(schemaPath != "/") subpath = schemaPath + subpath;
+                   
+                    var subschema = applyPath(topSchema, pathParts(subpath));
+                    
+                    dataSubpath = "/" + key;
+                    if(dataPath != "/") dataSubpath = dataPath + dataSubpath;
+                    
+                    var subresult = validate({
+                        data: subdata,
+                        schema: subschema,
+                        topSchema: topSchema,
+                        schemaPath: subpath,
+                        dataPath: dataSubpath,
+                        errorHandler: errorHandler,
+                    });
+                    
+                    if(!subresult.valid) valid = false;
+                    errors = _.flatten([errors, subresult.errors], true);
+                } else if(!additionalProperties) {
+                    emitError({
+                        message: "Property " + key + " not allowed" + inPart + ".",
+                        property: key,
+                    });
+                }
+            });
+        } else {
+            emitError({
+                message: "Non-JSON value not allowed" + inPart + ".",
+            });
+        }
+        
+        errorGroups.push(errorGroup);
+        emitError = savedEmitError;
+        // IAK
+        
+        if(!_.isUndefined(schema.enum)) {
+            var found = _.any(schema.enum, function(expectedData) {
+                return equal(data, expectedData);
+            });
+            
+            if(!found) {
+                emitError({
+                    message: "Value not allowed" + inPart + ".",
+                    allowedValues: schema.enum,
+                });
+            }
+        }
+        
+        if(!_.isUndefined(schema.extends)) {
+            var subpaths;
+            if(_.isArray(schema.extends)) {
+                subpaths = _.map(_.range(schema.extends.length), function(index) {
+                    return "/extends/" + index;
+                });
+            } else {
+                subpaths = ["/extends"];
+            }
+            
+            _.each(subpaths, function(subpath) {
+                if(schemaPath != "/") subpath = schemaPath + subpath;
+                
+                var subschema = applyPath(topSchema, pathParts(subpath));
+                
+                var subresult = validate({
+                    data: data,
+                    schema: subschema,
+                    topSchema: topSchema,
+                    schemaPath: subpath,
+                    dataPath: dataPath,
+                    errorHandler: errorHandler,
+                });
+                
+                if(!subresult.valid) valid = false;
+                errors = _.flatten([errors, subresult.errors], true);
+            });
+        }
     }
     
-    return validators["/"];
-};
+    return {
+        data: data,
+        valid: valid,
+        errors: errors,
+    };
+}
 
+var directSchema = function(schema) {
+    return function(data, errorHandler) {
+        return validate({
+            data: data,
+            schema: schema,
+            topSchema: schema,
+            schemaPath: "/",
+            dataPath: "/",
+            errorHandler: errorHandler,
+        });
+    };
+}
 
 module.exports = directSchema;
