@@ -1,6 +1,6 @@
 {
   "name": "direct-schema",
-  "version": "1.0.0",
+  "version": "0.3.0",
   "description": "A validator for json-schema, designed as a testbed for experimental extensions to it",
   "licenses": [{"type": "BSD"}],
   "homepage": "http://ireneknapp.com/software/",
