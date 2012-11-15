@@ -2,7 +2,7 @@ var fs = require("fs");
 var _ = require("underscore");
 var directSchema = require("../src/directSchema.js");
 
-var directory = "JSON-Schema-Test-Suite/tests/draft3";
+var directory = "tests/JSON-Schema-Test-Suite/tests/draft3";
 var filenames = _.map(_.filter(fs.readdirSync(directory), function(filename) {
     return /.json$/.test(filename);
 }), function(filename) {
