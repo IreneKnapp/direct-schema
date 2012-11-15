@@ -81,7 +81,7 @@ validate = function(options) {
         var error = _.extend(options, errorTemplate);
         valid = false;
         errors.push(error);
-        if(!_.isNull(errorHandler)) errorHandler(error);
+        if(errorHandler) errorHandler(error);
     };
     
     if(!_.isUndefined(schema.$ref)) {
@@ -110,7 +110,11 @@ validate = function(options) {
     } else {
         var allowedTypes = schema.type || "any";
         if(_.isString(allowedTypes)) allowedTypes = [allowedTypes];
-        var allowedSchemas = _.reject(allowedTypes, _.isString);
+        var allowedSchemas = _.filter(_.map(allowedTypes, function(allowedType, index) {
+            return [index, allowedType];
+        }), function(allowedType) {
+            return !_.isString(allowedType[1]);
+        });
         allowedTypes = _.filter(allowedTypes, _.isString);
         if(_.contains(allowedTypes, "any"))
             allowedTypes = ["string", "number", "integer", "boolean",
@@ -119,7 +123,19 @@ validate = function(options) {
         var errorGroups = [];
         
         _.each(allowedSchemas, function(allowedSchema) {
-            // ... IAK
+            var subpath = "/type/" + allowedSchema[0];
+            if(schemaPath != "/") subpath = schemaPath + subpath;
+            
+            var subresult = validate({
+                data: data,
+                schema: allowedSchema[1],
+                topSchema: topSchema,
+                schemaPath: subpath,
+                dataPath: dataPath,
+                errorHandler: null,
+            });
+            
+            errorGroups.push([subresult.valid, subresult.errors]);
         });
         
         var errorGroup = [];
@@ -162,36 +178,6 @@ validate = function(options) {
                 emitError({
                     message: "String not allowed" + inPart + ".",
                 });
-            } else {
-                if(!_.isUndefined(schema.pattern)) {
-                    var regexp = new RegExp(schema.pattern);
-                    if(!regexp.test(data)) {
-                        emitError({
-                            message: "String doesn't match pattern" + inPart + ".",
-                            pattern: schema.pattern,
-                        });
-                    }
-                }
-                
-                if(!_.isUndefined(schema.minLength)) {
-                    if(data.length < schema.minLength) {
-                        emitError({
-                            message: "String doesn't meet minimum length" + inPart + ".",
-                            actualLength: data.length,
-                            minimumLength: schema.minLength,
-                        });
-                    }
-                }
-                
-                if(!_.isUndefined(schema.maxLength)) {
-                    if(data.length > schema.maxLength) {
-                        emitError({
-                            message: "String exceeds maximum length" + inPart + ".",
-                            actualLength: data.length,
-                            maximumLength: schema.maxLength,
-                        });
-                    }
-                }
             }
         } else if(_.isArray(data)) {
             if(!_.contains(allowedTypes, "array")) {
@@ -205,7 +191,241 @@ validate = function(options) {
                     message: "Object not allowed" + inPart + ".",
                 });
             }
+        } else {
+            emitError({
+                message: "Non-JSON value not allowed" + inPart + ".",
+            });
+        }
+        
+        errorGroups.push([errorGroup.length == 0, errorGroup]);
+        emitError = savedEmitError;
+        var successCount = _.filter(errorGroups, function(errorGroup) {
+            return errorGroup[0];
+        }).length;
+        var failures = _.map(_.filter(errorGroups, function(errorGroup) {
+            return !errorGroup[0];
+        }), function(errorGroup) {
+            return errorGroup[1];
+        });
+        if(successCount == 0) {
+            emitError({
+                message: "No interpretation matches" + inPart +".",
+                interpretations: failures,
+            });
+        }
+        
+        if(_.isNull(data)) {
+        } else if(_.isBoolean(data)) {
+        } else if(_.isNumber(data)) {
+            if(!_.isUndefined(schema.minimum)) {
+                if(!_.isUndefined(schema.exclusiveMinimum) && schema.exclusiveMinimum) {
+                    if(data <= schema.minimum) {
+                        emitError({
+                            message: "Number doesn't meet exclusive minimum" + inPart + ".",
+                            minimum: schema.minimum,
+                        });
+                    }
+                } else {
+                    if(data <= schema.minimum) {
+                        emitError({
+                            message: "Number doesn't meet minimum" + inPart + ".",
+                            minimum: schema.minimum,
+                        });
+                    }
+                }
+            }
             
+            if(!_.isUndefined(schema.maximum)) {
+                if(!_.isUndefined(schema.exclusiveMaximum) && schema.exclusiveMaximum) {
+                    if(data >= schema.maximum) {
+                        emitError({
+                            message: "Number exceeds exclusive maximum" + inPart + ".",
+                            maximum: schema.maximum,
+                        });
+                    }
+                } else {
+                    if(data > schema.maximum) {
+                        emitError({
+                            message: "Number exceeds maximum" + inPart + ".",
+                            maximum: schema.maximum,
+                        });
+                    }
+                }
+            }
+            
+            if(!_.isUndefined(schema.divisibleBy)) {
+                if(data % schema.divisibleBy != 0) {
+                    emitError({
+                        message: "Number not divisible by " + schema.divisibleBy + inPart + ".",
+                        divisor: schema.divisibleBy,
+                    });
+                }
+            }
+        } else if(_.isString(data)) {
+            if(!_.isUndefined(schema.pattern)) {
+                var regexp = new RegExp(schema.pattern);
+                if(!regexp.test(data)) {
+                    emitError({
+                        message: "String doesn't match pattern" + inPart + ".",
+                        pattern: schema.pattern,
+                    });
+                }
+            }
+            
+            if(!_.isUndefined(schema.minLength)) {
+                if(data.length < schema.minLength) {
+                    emitError({
+                        message: "String doesn't meet minimum length" + inPart + ".",
+                        actualLength: data.length,
+                        minimumLength: schema.minLength,
+                    });
+                }
+            }
+            
+            if(!_.isUndefined(schema.maxLength)) {
+                if(data.length > schema.maxLength) {
+                    emitError({
+                        message: "String exceeds maximum length" + inPart + ".",
+                        actualLength: data.length,
+                        maximumLength: schema.maxLength,
+                    });
+                }
+            }
+        } else if(_.isArray(data)) {
+            if(_.isArray(schema.items)) {
+                for(var index = 0; index < data.length && index < schema.items.length; index++) {
+                    var subpath = "/items/" + index;
+                    if(schemaPath != "/") subpath = schemaPath + subpath;
+                    
+                    var subschema = schema.items[index];
+                    
+                    dataSubpath = "/" + index;
+                    if(dataPath != "/") dataSubpath = dataPath + dataSubpath;
+                    
+                    var subdata = data[index];
+                    
+                    var subresult = validate({
+                        data: subdata,
+                        schema: subschema,
+                        topSchema: topSchema,
+                        schemaPath: subpath,
+                        dataPath: dataSubpath,
+                        errorHandler: errorHandler,
+                    });
+                    
+                    if(!subresult.valid) valid = false;
+                    errors = _.flatten([errors, subresult.errors], true);
+                }
+                
+                if(data.length < schema.items.length) {
+                    emitError({
+                        message: "Array doesn't meet tuple length" + inPart + ".",
+                        actualLength: data.length,
+                        tupleLength: schema.items.length,
+                    });
+                } else if(data.length > schema.items.length) {
+                    if(!_.isUndefined(schema.additionalItems)) {
+                        if(_.isBoolean(schema.additionalItems)) {
+                            if(!schema.additionalItems) {
+                                emitError({
+                                    message: "Array exceeds tuple length" + inPart + ".",
+                                    actualLength: data.length,
+                                    tupleLength: schema.items.length,
+                                });
+                            }
+                        } else if(_.isObject(schema.additionalItems)) {
+                            var subpath = "/additionalItems";
+                            if(schemaPath != "/") subpath = schemaPath + subpath;
+                            
+                            var subschema = schema.additionalItems;
+                            
+                            for(var index = schema.items.length; index < data.length; index++) {
+                                dataSubpath = "/" + index;
+                                if(dataPath != "/") dataSubpath = dataPath + dataSubpath;
+                                
+                                var subdata = data[index];
+                                
+                                var subresult = validate({
+                                    data: subdata,
+                                    schema: subschema,
+                                    topSchema: topSchema,
+                                    schemaPath: subpath,
+                                    dataPath: dataSubpath,
+                                    errorHandler: errorHandler,
+                                });
+                                
+                                if(!subresult.valid) valid = false;
+                                errors = _.flatten([errors, subresult.errors], true);
+                            }
+                        }
+                    }
+                }
+            } else if(_.isObject(schema.items)) {
+                var subpath = "/items";
+                if(schemaPath != "/") subpath = schemaPath + subpath;
+                
+                var subschema = schema.items;
+                
+                _.each(data, function(subdata, index) {
+                    dataSubpath = "/" + index;
+                    if(dataPath != "/") dataSubpath = dataPath + dataSubpath;
+                    
+                    var subresult = validate({
+                        data: subdata,
+                        schema: subschema,
+                        topSchema: topSchema,
+                        schemaPath: subpath,
+                        dataPath: dataSubpath,
+                        errorHandler: errorHandler,
+                    });
+                    
+                    if(!subresult.valid) valid = false;
+                    errors = _.flatten([errors, subresult.errors], true);
+                });
+            }
+            
+            if(!_.isUndefined(schema.minItems)) {
+                if(data.length < schema.minItems) {
+                    emitError({
+                        message: "Array doesn't meet minimum length" + inPart + ".",
+                        actualLength: data.length,
+                        minimumLength: schema.minItems,
+                    });
+                }
+            }
+            
+            if(!_.isUndefined(schema.maxItems)) {
+                if(data.length > schema.maxItems) {
+                    emitError({
+                        message: "Array exceeds maximum length" + inPart + ".",
+                        actualLength: data.length,
+                        maximumLength: schema.maxItems,
+                    });
+                }
+            }
+            
+            if(!_.isUndefined(schema.uniqueItems) && schema.uniqueItems) {
+                var uniques = [];
+                var duplicates = [];
+                _.each(data, function(subdata) {
+                    var found = false;
+                    _.each(uniques, function(unique) {
+                        if(equal(unique, subdata)) {
+                            found = true;
+                            duplicates.push(subdata);
+                        }
+                    });
+                    if(!found) uniques.push(subdata);
+                });
+                
+                if(duplicates.length > 0) {
+                    emitError({
+                        message: "Array contains duplicate items" + inPart + ".",
+                        duplicates: duplicates,
+                    });
+                }
+            }
+        } else if(_.isObject(data)) {
             _.each(data, function(subdata, key) {
                 var subpath = null;
                 var additionalProperties = true;
@@ -218,8 +438,6 @@ validate = function(options) {
                 
                 if(_.isNull(subpath) && !_.isUndefined(schema.patternProperties)) {
                     _.each(_.keys(schema.patternProperties), function(pattern) {
-                        if(!_.isNull(subpath)) return;
-                        
                         if(key.match(pattern)) {
                             subpath = "/patternProperties/" + pattern;
                         }
@@ -236,7 +454,7 @@ validate = function(options) {
                 
                 if(!_.isNull(subpath)) {
                     if(schemaPath != "/") subpath = schemaPath + subpath;
-                   
+                    
                     var subschema = applyPath(topSchema, pathParts(subpath));
                     
                     dataSubpath = "/" + key;
@@ -260,15 +478,20 @@ validate = function(options) {
                     });
                 }
             });
-        } else {
-            emitError({
-                message: "Non-JSON value not allowed" + inPart + ".",
-            });
+            
+            if(!_.isUndefined(schema.properties)) {
+                _.each(schema.properties, function(subschema, key) {
+                    if(!_.isUndefined(subschema.required) && subschema.required
+                       && _.isUndefined(data[key]))
+                    {
+                        emitError({
+                        message: "Property " + key + " required" + inPart + ".",
+                        property: key,
+                        });
+                    }
+                });
+            }
         }
-        
-        errorGroups.push(errorGroup);
-        emitError = savedEmitError;
-        // IAK
         
         if(!_.isUndefined(schema.enum)) {
             var found = _.any(schema.enum, function(expectedData) {
