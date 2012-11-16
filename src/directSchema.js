@@ -278,7 +278,7 @@ validate = function(options) {
             }
             
             if(!_.isUndefined(schema.divisibleBy)) {
-                if(data % schema.divisibleBy != 0) {
+                if((data / schema.divisibleBy) % 1 != 0) {
                     emitError({
                         message: "Number not divisible by " + schema.divisibleBy + inPart + ".",
                         divisor: schema.divisibleBy,
@@ -451,50 +451,52 @@ validate = function(options) {
             }
         } else if(_.isObject(data)) {
             _.each(data, function(subdata, key) {
-                var subpath = null;
+                var subpaths = [];
                 var additionalProperties = true;
                 
                 if(!_.isUndefined(schema.properties)
                    && !_.isUndefined(schema.properties[key]))
                 {
-                    subpath = "/properties/" + key;
+                    subpaths.push("/properties/" + key);
                 }
                 
-                if(_.isNull(subpath) && !_.isUndefined(schema.patternProperties)) {
+                if(!_.isUndefined(schema.patternProperties)) {
                     _.each(_.keys(schema.patternProperties), function(pattern) {
                         if(key.match(pattern)) {
-                            subpath = "/patternProperties/" + pattern;
+                            subpaths.push("/patternProperties/" + pattern);
                         }
                     });
                 }
                 
-                if(_.isNull(subpath) && !_.isUndefined(schema.additionalProperties)) {
+                if((subpaths.length == 0) && !_.isUndefined(schema.additionalProperties)) {
                     if(_.isBoolean(schema.additionalProperties)) {
                         additionalProperties = schema.additionalProperties;
                     } else {
-                        subpath = "/additionalProperties";
+                        subpaths.push("/additionalProperties");
                     }
                 }
                 
-                if(!_.isNull(subpath)) {
-                    if(schemaPath != "/") subpath = schemaPath + subpath;
-                    
-                    var subschema = applyPath(topSchema, pathParts(subpath));
-                    
-                    dataSubpath = "/" + key;
-                    if(dataPath != "/") dataSubpath = dataPath + dataSubpath;
-                    
-                    var subresult = validate({
-                        data: subdata,
-                        schema: subschema,
-                        topSchema: topSchema,
-                        schemaPath: subpath,
-                        dataPath: dataSubpath,
-                        errorHandler: errorHandler,
+                if(subpaths.length > 0) {
+                    _.each(subpaths, function(subpath) {
+                        if(schemaPath != "/") subpath = schemaPath + subpath;
+                        
+                        var subschema = applyPath(topSchema, pathParts(subpath));
+                        
+                        dataSubpath = "/" + key;
+                        if(dataPath != "/") dataSubpath = dataPath + dataSubpath;
+                        
+                        var subresult = validate({
+                            data: subdata,
+                            schema: subschema,
+                            topSchema: topSchema,
+                            schemaPath: subpath,
+                            dataPath: dataSubpath,
+                            errorHandler: errorHandler,
+                        });
+                        
+                        if(!subresult.valid) valid = false;
+                        errors = _.flatten([errors, subresult.errors], true);
                     });
-                    
-                    if(!subresult.valid) valid = false;
-                    errors = _.flatten([errors, subresult.errors], true);
                 } else if(!additionalProperties) {
                     emitError({
                         message: "Property " + key + " not allowed" + inPart + ".",
@@ -513,6 +515,48 @@ validate = function(options) {
                         property: key,
                         });
                     }
+                });
+            }
+            
+            if(!_.isUndefined(schema.dependencies)) {
+                _.each(schema.dependencies, function(dependents, dependency) {
+                    if(_.isUndefined(data[dependency])) return;
+                    
+                    var subpaths;
+                    if(_.isArray(dependents)) {
+                        subpaths = _.map(_.range(dependents.length), function(index) {
+                            return "/dependencies/" + dependency + "/" + index;
+                        });
+                    } else {
+                        subpaths = ["/dependencies/" + dependency];
+                    }
+                    
+                    _.each(subpaths, function(subpath) {
+                        if(schemaPath != "/") subpath = schemaPath + subpath;
+                        
+                        var subschema = applyPath(topSchema, pathParts(subpath));
+                        
+                        if(_.isString(subschema)) {
+                            if(_.isUndefined(data[subschema])) {
+                                emitError({
+                                    "message": "Missing dependency " + subschema + inPart + ".",
+                                    "dependency": subschema,
+                                });
+                            }
+                        } else if(_.isObject(subschema)) {
+                            var subresult = validate({
+                                data: data,
+                                schema: subschema,
+                                topSchema: topSchema,
+                                schemaPath: subpath,
+                                dataPath: dataPath,
+                                errorHandler: errorHandler,
+                            });
+                            
+                            if(!subresult.valid) valid = false;
+                            errors = _.flatten([errors, subresult.errors], true);
+                        }
+                    });
                 });
             }
         }
@@ -556,6 +600,92 @@ validate = function(options) {
                 
                 if(!subresult.valid) valid = false;
                 errors = _.flatten([errors, subresult.errors], true);
+            });
+        }
+        
+        if(!_.isUndefined(schema.disallow)) {
+            var subpaths;
+            if(_.isArray(schema.disallow)) {
+                subpaths = _.map(_.range(schema.disallow.length), function(index) {
+                    return "/disallow/" + index;
+                });
+            } else {
+                subpaths = ["/disallow"];
+            }
+            
+            _.each(subpaths, function(subpath) {
+                if(schemaPath != "/") subpath = schemaPath + subpath;
+                
+                var subschema = applyPath(topSchema, pathParts(subpath));
+                
+                if(_.isString(subschema)) {
+                    if(subschema == "null") {
+                        if(_.isNull(data)) {
+                            emitError({
+                                message: "Null explicitly disallowed" + inPart + ".",
+                            });
+                        }
+                    } else if(subschema == "boolean") {
+                        if(_.isBoolean(data)) {
+                            emitError({
+                                message: "Boolean explicitly disallowed" + inPart + ".",
+                            });
+                        }
+                    } else if(subschema == "number") {
+                        if(_.isNumber(data)) {
+                            emitError({
+                                message: "Number explicitly disallowed" + inPart + ".",
+                            });
+                        }
+                    } else if(subschema == "integer") {
+                        if(_.isNumber(data) && !_.isNaN(data) && _.isFinite(data)
+                           && (data % 1 == 0))
+                        {
+                            emitError({
+                                message: "Integer explicitly disallowed" + inPart + ".",
+                            });
+                        }
+                    } else if(subschema == "string") {
+                        if(_.isString(data)) {
+                            emitError({
+                                message: "String explicitly disallowed" + inPart + ".",
+                            });
+                        }
+                    } else if(subschema == "array") {
+                        if(_.isArray(data)) {
+                            emitError({
+                                message: "Array explicitly disallowed" + inPart + ".",
+                            });
+                        }
+                    } else if(subschema == "object") {
+                        if(_.isObject(data)) {
+                            emitError({
+                                message: "Object explicitly disallowed" + inPart + ".",
+                            });
+                        }
+                    }
+                } else if(_.isObject(subschema)) {
+                    var subresult = validate({
+                        data: data,
+                        schema: subschema,
+                        topSchema: topSchema,
+                        schemaPath: subpath,
+                        dataPath: dataPath,
+                        errorHandler: null,
+                    });
+                    
+                    if(subresult.valid) {
+                        valid = false;
+                        var whatPart = !_.isUndefined(subschema.title) ? subschema.title : "value";
+                        emitError({
+                            message: "Disallowed " + whatPart + ".",
+                            disallowedSchemaPath: subpath,
+                            disallowedSchemaTitle: subschema.title,
+                            disallowedSchemaDescription: subschema.description,
+                            disallowedSchema: subschema,
+                        });
+                    }
+                }
             });
         }
     }
