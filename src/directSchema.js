@@ -3,7 +3,31 @@ var _ = require('underscore');
 
 var pathParts = function(path) {
     if(path == "/") return [];
-    return path.split("/").slice(1);
+    return _.map(path.split("/").slice(1), function(component) {
+        var result = "";
+        for(var i = 0; i < component.length; i++) {
+            if(component[i] == '~') {
+                if(i + 1 < component.length) {
+                    if(component[i + 1] == "0") {
+                        result += "~";
+                    } else if(component[i + 1] == "1") {
+                        result += "/";
+                    }
+                    i += 1;
+                }
+            } else if(component[i] == "%") {
+                if(i + 2 < component.length) {
+                    result += String.fromCharCode
+                        (parseInt(component.slice(i + 1, i + 3), 16));
+                    i += 2;
+                }
+            } else {
+                result += component[i];
+            }
+        }
+        
+        return result;
+    });
 }
 
 var applyPath;
